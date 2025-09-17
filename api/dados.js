@@ -7,6 +7,16 @@ function excelDateToJSDate(excelDate) {
   return date;
 }
 
+// VARIÁVEL QUE FALTAVA - ADICIONADA AQUI
+const stageNameMapping = { 
+  "Prospecção e Contratação de Especialistas": "Etapa 1", 
+  "Edital de Credenciamento": "Etapa 2", 
+  "Curso Piloto": "Etapa 3", 
+  "Formação de Instrutores": "Etapa 4", 
+  "Entrega Técnica": "Etapa 5", 
+  "Lançamento a Campo": "Etapa 6" 
+};
+
 export default async function handler(request, response) {
   const googleDriveUrl = "https://drive.google.com/uc?export=download&id=1p-hxGxOqDmsq-Z583mL57vXZShqdn-3u";
 
@@ -47,13 +57,15 @@ export default async function handler(request, response) {
             .map((evento, index) => {
                 const responsavel = evento.filename.replace("Checklist de Entregas - ", "").replace(".xlsx", "");
                 const isPedagogo = pedagogosPrincipais.includes(responsavel);
+                const cursoAssociado = cursosLimpos.find(c => c.nome === evento.Atividade);
                 return {
                     id: `${tipoEvento}_${index}`,
                     title: evento.Atividade,
                     startDate: excelDateToJSDate(evento.Data),
                     endDate: excelDateToJSDate(evento["Data Final (se houver)"]) || excelDateToJSDate(evento.Data),
                     type: tipoNome + (isPedagogo ? '_pedagogo' : '_tecnico'),
-                    owner: responsavel
+                    owner: responsavel,
+                    course: cursoAssociado || null
                 };
             });
     };
