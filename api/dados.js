@@ -1,9 +1,6 @@
 // Arquivo: api/dados.js
-// Este é o código COMPLETO da sua API. Ele contém:
-// 1. Funções Utilitárias (para datas e nomes)
-// 2. Funções de Processamento (para limpar cada tipo de dado do JSON)
-// 3. Funções de Análise (para agregar os dados e criar os KPIs)
-// 4. O Handler Principal (a função que é executada quando a API é chamada)
+// CÓDIGO COMPLETO E FINAL
+// Inclui filtro de ano e a lista atualizada de "próximos 10 lançamentos".
 
 // --- FUNÇÕES UTILITÁRIAS ---
 
@@ -22,7 +19,7 @@ function getPersonNameFromFile(filename = "") {
         .trim();
 }
 
-const pedagogueNameMap = { 
+const pedagogueNameMap = {
     "Josimeri": "Josimeri Grein", "Leandro": "Leandro Prado", "Enderson": "Enderson Lopes",
     "Regiane": "Regiane Hornung", "Marcia": "Marcia Salles"
 };
@@ -34,11 +31,14 @@ const normalizePedagogueName = (name) => pedagogueNameMap[name] || name;
 function processarChecklist(checklist = []) {
     return checklist
         .filter(curso => curso.Curso && curso.Curso.trim() !== "")
-        .map(curso => {
+        .map((curso, index) => {
             const dataCampo = excelDateToJSDate(curso["Disponível a campo"]);
             return {
-              nome: curso.Curso, nivel: curso.Nível, tipo: curso.Tipo,
-              pedagogo: normalizePedagogueName(curso.Pedagogo), // Nome normalizado aqui
+              id: `CURSO_${index + 1}`,
+              nome: curso.Curso,
+              nivel: curso.Nível,
+              tipo: curso.Tipo,
+              pedagogo: normalizePedagogueName(curso.Pedagogo),
               dataDisponivel: dataCampo,
               anoDisponivel: dataCampo ? dataCampo.getFullYear() : null,
               trimestreDisponivel: dataCampo ? Math.ceil((dataCampo.getMonth() + 1) / 3) : null,
@@ -56,8 +56,10 @@ function processarChecklist(checklist = []) {
 
 function processarOutrasFormacoes(outrasFormacoes = []) {
     return outrasFormacoes.map(formacao => ({
-        curso: formacao.Curso, nivel: formacao.Nível, tipo: formacao.Tipo,
-        pedagogo: normalizePedagogueName(formacao.Pedagogo), // Nome normalizado aqui
+        curso: formacao.Curso,
+        nivel: formacao.Nível,
+        tipo: formacao.Tipo,
+        pedagogo: normalizePedagogueName(formacao.Pedagogo),
         inicio: excelDateToJSDate(formacao["Início (Data)"]),
         fim: excelDateToJSDate(formacao["Final (Data)"]),
         tecnico: getPersonNameFromFile(formacao.filename),
@@ -66,90 +68,157 @@ function processarOutrasFormacoes(outrasFormacoes = []) {
 
 function processarEventos(eventos = []) {
     return eventos.map(evento => ({
-        tema: evento.Tema, tipo: evento.Tipo, estilo: evento.Estilo,
+        tema: evento.Tema,
+        tipo: evento.Tipo,
+        estilo: evento.Estilo,
         inicio: excelDateToJSDate(evento["Início (Data)"]),
         fim: excelDateToJSDate(evento["Final (Data)"]),
         tecnico: getPersonNameFromFile(evento.filename),
     }));
 }
 
-function processarOutrasAtividades(outrasAtividades = [], pedagogosPrincipais = []) {
-    const atividadesProcessadas = { pedagogos: [], tecnicos: [] };
-    outrasAtividades.forEach(atividade => {
-        const pessoa = getPersonNameFromFile(atividade.filename);
-        const inicio = excelDateToJSDate(atividade["Início (Data)"]);
-        const itemProcessado = {
-            tipo: atividade.Tipo, tema: atividade.Tema, inicio,
-            fim: excelDateToJSDate(atividade["Final (Data)"]),
-            responsavel: pessoa,
-            ano: inicio ? inicio.getFullYear() : null
-        };
-        // Separa as atividades com base na lista de pedagogos que você definiu como principais
-        // No handler, estamos usando ["Josimeri Grein", "Leandro Prado", "Enderson Lopes"]
-        if (pedagogosPrincipais.includes(pessoa)) {
-            atividadesProcessadas.pedagogos.push(itemProcessado);
-        } else {
-            atividadesProcessadas.tecnicos.push(itemProcessado);
-        }
-    });
-    return atividadesProcessadas;
+// --- FUNÇÕES DE ANÁLISE E FORMATAÇÃO ---
+
+const gerarVisaoGeral = (cursosLimpos) => {
+    const dataFiltrada = cursosLimpos;
+    const metaEntregas = dataFiltrada.length;
+    const novos = dataFiltrada.filter(c => c.tipo === 'Curso novo');
+    const atualizacoes = dataFiltrada.filter(c => c.tipo === 'Atualização');
+    const novosEntregues = novos.filter(c => c.etapaAtual === 'Entregue').length;
+    const atualizacoesEntregues = atualizacoes.filter(c => c.etapaAtual === 'Entregue').length;
+
+    const mapaEtapas = { "Prospecção e Contratação de Especialistas": "Etapa 1", "Edital de Credenciamento": "Etapa 2", "Curso Piloto": "Etapa 3", "Formação de Instrutores": "Etapa 4", "Entrega Técnica": "Etapa 5", "Lançamento a Campo": "Etapa 6", "Entregue": "Entregue" };
+    const cursosPorEtapa = dataFiltrada.reduce((acc, c) => { const etapa = mapaEtapas[c.etapaAtual] || "Outra"; acc[etapa] = (acc[etapa] || 0) + 1; return acc; }, {});
+    const entregasPorTrimestre = dataFiltrada.reduce((acc, c) => { if (c.trimestreDisponivel) { acc[`T${c.trimestreDisponivel}`] = (acc[`T${c.trimestreDisponivel}`] || 0) + 1; } return acc; }, {});
+    const cursosPorNivel = dataFiltrada.reduce((acc, c) => { const nivel = c.nivel || "Não definido"; acc[nivel] = (acc[nivel] || 0) + 1; return acc; }, {});
+
+    // ATUALIZADO: Lógica dos próximos 10 lançamentos
+    const proximosLancamentos = cursosLimpos
+        .filter(c => c.dataDisponivel && c.dataDisponivel >= new Date() && c.etapaAtual !== 'Entregue')
+        .sort((a,b) => a.dataDisponivel - b.dataDisponivel)
+        .slice(0, 10) // Pega os 10 próximos
+        .map(c => ({
+            nome: c.nome,
+            nivel: c.nivel,
+            dataLancamento: c.dataDisponivel.toISOString().split('T')[0]
+        }));
+
+    return {
+      indicadores: {
+        metaEntregas,
+        novos: { entregues: novosEntregues, total: novos.length },
+        atualizacoes: { entregues: atualizacoesEntregues, total: atualizacoes.length }
+      },
+      graficos: {
+        cursosPorEtapa,
+        entregasTrimestrais: entregasPorTrimestre,
+        cursosPorNivel
+      },
+      proximosLancamentos
+    };
 }
 
-// --- FUNÇÕES DE ANÁLISE E AGREGAÇÃO ---
-
-const gerarAnaliseGeral = (cursosLimpos) => {
-    const filterByYear = (data, year) => (year === 'Total') ? data : data.filter(c => c.anoDisponivel === parseInt(year));
-    
-    const gerarAnaliseParaAno = (year) => {
-        const dataFiltrada = filterByYear(cursosLimpos, year);
-        const metaEntregas = dataFiltrada.length;
-        const novos = dataFiltrada.filter(c => c.tipo === 'Curso novo');
-        const atualizacoes = dataFiltrada.filter(c => c.tipo === 'Atualização');
-        const novosEntregues = novos.filter(c => c.etapaAtual === 'Entregue').length;
-        const atualizacoesEntregues = atualizacoes.filter(c => c.etapaAtual === 'Entregue').length;
-
-        const mapaEtapas = { "Prospecção e Contratação de Especialistas": "Etapa 1", "Edital de Credenciamento": "Etapa 2", "Curso Piloto": "Etapa 3", "Formação de Instrutores": "Etapa 4", "Entrega Técnica": "Etapa 5", "Lançamento a Campo": "Etapa 6", "Entregue": "Entregue" };
-        const cursosPorEtapa = dataFiltrada.reduce((acc, c) => { const etapa = mapaEtapas[c.etapaAtual] || "Outra"; acc[etapa] = (acc[etapa] || 0) + 1; return acc; }, {});
-        const entregasPorTrimestre = dataFiltrada.reduce((acc, c) => { if (c.trimestreDisponivel) { acc[`T${c.trimestreDisponivel}`] = (acc[`T${c.trimestreDisponivel}`] || 0) + 1; } return acc; }, {});
-        const cursosPorNivel = dataFiltrada.reduce((acc, c) => { const nivel = c.nivel || "Não definido"; acc[nivel] = (acc[nivel] || 0) + 1; return acc; }, {});
-        
-        // **NOVO** Cálculo da média dos indicadores para o velocímetro
-        const totalIndicadores = dataFiltrada.reduce((acc, c) => acc + (c.indicadorReal || 0), 0);
-        const kpiGeral = dataFiltrada.length > 0 ? Math.round((totalIndicadores / dataFiltrada.length) * 100) : 0;
+const formatarCursosParaLista = (cursosLimpos) => {
+    return cursosLimpos.map(curso => {
+        const eventosAssociados = [];
+        if (curso.pilotoInicio) {
+            eventosAssociados.push({
+                tipo: "Piloto",
+                inicio: curso.pilotoInicio.toISOString().split('T')[0],
+                fim: curso.pilotoFim ? curso.pilotoFim.toISOString().split('T')[0] : curso.pilotoInicio.toISOString().split('T')[0]
+            });
+        }
+        if (curso.formacaoInicio) {
+            eventosAssociados.push({
+                tipo: "Formação",
+                inicio: curso.formacaoInicio.toISOString().split('T')[0],
+                fim: curso.formacaoFim ? curso.formacaoFim.toISOString().split('T')[0] : curso.formacaoInicio.toISOString().split('T')[0]
+            });
+        }
 
         return {
-            metaEntregas,
-            totalEntregas: { totalNovos: novos.length, totalAtualizacoes: atualizacoes.length, novosEntregues, atualizacoesEntregues },
-            cursosPorEtapa, planejamentoTrimestral: entregasPorTrimestre, cursosPorNivel, kpiGeral
+            id: curso.id,
+            nome: curso.nome,
+            nivel: curso.nivel,
+            tipo: curso.tipo,
+            anoDisponivel: curso.anoDisponivel,
+            dataDisponivel: curso.dataDisponivel ? curso.dataDisponivel.toISOString().split('T')[0] : null,
+            etapaAtual: curso.etapaAtual,
+            indicadorReal: curso.indicadorReal,
+            equipe: {
+                pedagogo: curso.pedagogo,
+                tecnico: curso.tecnico
+            },
+            eventosAssociados
         };
-    }
-
-    const anosDisponiveis = [...new Set(cursosLimpos.map(c => c.anoDisponivel).filter(Boolean))].sort();
-    const analises = { Total: gerarAnaliseParaAno('Total') };
-    anosDisponiveis.forEach(ano => { analises[ano] = gerarAnaliseParaAno(ano); });
-    return analises;
-}
-
-function gerarEventosCalendario(cursos, formacoes, eventos) {
-    const calendario = [];
-    cursos.forEach(c => {
-        if (c.pilotoInicio) calendario.push({ title: `Início Piloto: ${c.nome}`, date: c.pilotoInicio.toISOString().split('T')[0], type: 'piloto' });
-        if (c.pilotoFim) calendario.push({ title: `Fim Piloto: ${c.nome}`, date: c.pilotoFim.toISOString().split('T')[0], type: 'piloto' });
-        if (c.formacaoInicio) calendario.push({ title: `Início Formação: ${c.nome}`, date: c.formacaoInicio.toISOString().split('T')[0], type: 'formacao' });
-        if (c.formacaoFim) calendario.push({ title: `Fim Formação: ${c.nome}`, date: c.formacaoFim.toISOString().split('T')[0], type: 'formacao' });
     });
-    formacoes.forEach(f => { if (f.inicio) calendario.push({ title: `Formação Adicional: ${f.curso}`, date: f.inicio.toISOString().split('T')[0], type: 'outra_formacao' }); });
-    eventos.forEach(e => { if (e.inicio) calendario.push({ title: `${e.tipo}: ${e.tema}`, date: e.inicio.toISOString().split('T')[0], type: 'evento' }); });
-    return calendario.sort((a,b) => new Date(a.date) - new Date(b.date));
 }
+
+function gerarCalendarioEventos(cursos, formacoes, eventos) {
+    const calendario = [];
+    const cores = { piloto: '#8b5cf6', formacao: '#16a34a', evento: '#f97316' };
+
+    cursos.forEach(c => {
+        if (c.pilotoInicio) {
+            calendario.push({
+                titulo: `Piloto: ${c.nome}`,
+                dataInicio: c.pilotoInicio.toISOString().split('T')[0],
+                dataFim: c.pilotoFim ? c.pilotoFim.toISOString().split('T')[0] : c.pilotoInicio.toISOString().split('T')[0],
+                cor: cores.piloto,
+                tipo: 'Piloto',
+                propriedades: { cursoId: c.id, nomeCurso: c.nome, nivelCurso: c.nivel, pedagogo: c.pedagogo, tecnico: c.tecnico }
+            });
+        }
+        if (c.formacaoInicio) {
+             calendario.push({
+                titulo: `Formação: ${c.nome}`,
+                dataInicio: c.formacaoInicio.toISOString().split('T')[0],
+                dataFim: c.formacaoFim ? c.formacaoFim.toISOString().split('T')[0] : c.formacaoInicio.toISOString().split('T')[0],
+                cor: cores.formacao,
+                tipo: 'Formação',
+                propriedades: { cursoId: c.id, nomeCurso: c.nome, nivelCurso: c.nivel, pedagogo: c.pedagogo, tecnico: c.tecnico }
+            });
+        }
+    });
+
+    formacoes.forEach(f => {
+        if (f.inicio) {
+            calendario.push({
+                titulo: `Formação: ${f.curso}`,
+                dataInicio: f.inicio.toISOString().split('T')[0],
+                dataFim: f.fim ? f.fim.toISOString().split('T')[0] : f.inicio.toISOString().split('T')[0],
+                cor: cores.formacao,
+                tipo: 'Formação',
+                propriedades: { nomeCurso: f.curso, nivelCurso: f.nivel, pedagogo: f.pedagogo, tecnico: f.tecnico }
+            });
+        }
+    });
+
+    eventos.forEach(e => {
+        if (e.inicio) {
+            calendario.push({
+                titulo: `${e.tipo}: ${e.tema}`,
+                dataInicio: e.inicio.toISOString().split('T')[0],
+                dataFim: e.fim ? e.fim.toISOString().split('T')[0] : e.inicio.toISOString().split('T')[0],
+                cor: cores.evento,
+                tipo: `Evento ${e.estilo === 'Externa' ? 'Externo' : 'Interno'}`,
+                propriedades: { responsavel: e.tecnico }
+            });
+        }
+    });
+
+    return calendario.sort((a,b) => new Date(a.dataInicio) - new Date(b.dataInicio));
+}
+
 
 // --- HANDLER PRINCIPAL DA API ---
-// Esta é a função que a Vercel executa. Ela junta tudo.
 
 export default async function handler(request, response) {
+  // Captura o ano da URL. Ex: /api/dados?ano=2025
+  const anoQuery = request.query.ano;
+  const ano = anoQuery ? parseInt(anoQuery) : null;
+
   const googleDriveUrl = "https://drive.google.com/uc?export=download&id=1p-hxGxOqDmsq-Z583mL57vXZShqdn-3u";
-  // Define a lista de pedagogos cujas atividades devem ser tratadas separadamente
-  const pedagogosPrincipais = ["Josimeri Grein", "Leandro Prado", "Enderson Lopes"];
 
   try {
     // 1. Busca e carrega o arquivo JSON
@@ -157,44 +226,35 @@ export default async function handler(request, response) {
     if (!fileResponse.ok) throw new Error(`Erro ao buscar do Google Drive: ${fileResponse.statusText}`);
     const dadosBrutos = await fileResponse.json();
 
-    // 2. Executa todas as funções de processamento para limpar e estruturar os dados
-    const cursosLimpos = processarChecklist(dadosBrutos.checklist);
-    const formacoesLimpas = processarOutrasFormacoes(dadosBrutos.outrasFormacoes);
-    const eventosLimpos = processarEventos(dadosBrutos.eventos);
-    const atividadesProcessadas = processarOutrasAtividades(dadosBrutos.outrasAtividades, pedagogosPrincipais);
-    
-    // 3. Executa as funções de análise para criar os dados agregados para os gráficos e cards
-    const analisesGerais = gerarAnaliseGeral(cursosLimpos);
-    
-    // **CORRIGIDO** Cria a lista de próximos lançamentos, garantindo nome completo do pedagogo
-    const proximosLancamentos = cursosLimpos
-        .filter(c => c.dataDisponivel && c.dataDisponivel >= new Date())
-        .sort((a,b) => a.dataDisponivel - b.dataDisponivel)
-        .map(c => ({ 
-            ...c, 
-            dataLancamento: c.dataDisponivel, 
-            percentual: (c.conclusao || 0) * 100 
-        }));
-        
-    const eventosCalendario = gerarEventosCalendario(cursosLimpos, formacoesLimpas, eventosLimpos);
+    // 2. Executa as funções de processamento
+    let cursosLimpos = processarChecklist(dadosBrutos.checklist);
+    let formacoesLimpas = processarOutrasFormacoes(dadosBrutos.outrasFormacoes);
+    let eventosLimpos = processarEventos(dadosBrutos.eventos);
 
-    // 4. Monta o objeto final que será enviado como resposta da API
+    // Bloco de filtro por ano
+    if (ano) {
+      cursosLimpos = cursosLimpos.filter(c => c.anoDisponivel === ano);
+      formacoesLimpas = formacoesLimpas.filter(f => f.inicio && f.inicio.getFullYear() === ano);
+      eventosLimpos = eventosLimpos.filter(e => e.inicio && e.inicio.getFullYear() === ano);
+    }
+
+    // 3. Executa as funções de análise com os dados já filtrados
+    const visaoGeral = gerarVisaoGeral(cursosLimpos);
+    const listaCursos = formatarCursosParaLista(cursosLimpos);
+    const calendarioEventos = gerarCalendarioEventos(cursosLimpos, formacoesLimpas, eventosLimpos);
+
+    // 4. Monta o objeto final na estrutura desejada
     const dashboardData = {
+      anoFiltrado: ano || 'Geral',
       gerado_em: new Date().toISOString(),
-      analises: analisesGerais, 
-      proximosLancamentos, 
-      eventosCalendario,
-      dadosProcessados: {
-          cursos: cursosLimpos, 
-          formacoes: formacoesLimpas, 
-          eventos: eventosLimpos,
-          outrasAtividades: atividadesProcessadas.pedagogos,
-      }
+      visaoGeral,
+      cursos: listaCursos,
+      calendarioEventos,
     };
 
     // 5. Envia a resposta com sucesso
     response.setHeader('Access-Control-Allow-Origin', '*');
-    response.setHeader('Cache-Control', 's-maxage=60, stale-while-revalidate'); 
+    response.setHeader('Cache-Control', 's-maxage=60, stale-while-revalidate');
     return response.status(200).json(dashboardData);
 
   } catch (error) {
