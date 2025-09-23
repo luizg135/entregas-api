@@ -1,6 +1,6 @@
 // Arquivo: api/dados.js
 // CÓDIGO COMPLETO E FINAL
-// Inclui filtro de ano e a lista atualizada de "próximos 10 lançamentos".
+// Lógica atualizada para associar "Outras Formações" diretamente aos cursos existentes.
 
 // --- FUNÇÕES UTILITÁRIAS ---
 
@@ -77,6 +77,29 @@ function processarEventos(eventos = []) {
     }));
 }
 
+function processarOutrasAtividades(outrasAtividades = [], pedagogosPrincipais = []) {
+    const atividadesProcessadas = { pedagogos: [], tecnicos: [] };
+    outrasAtividades.forEach(atividade => {
+        const pessoa = getPersonNameFromFile(atividade.filename);
+        const inicio = excelDateToJSDate(atividade["Início (Data)"]);
+        const itemProcessado = {
+            tipo: atividade.Tipo,
+            tema: atividade.Tema,
+            inicio: inicio ? inicio.toISOString().split('T')[0] : null,
+            fim: excelDateToJSDate(atividade["Final (Data)"])?.toISOString().split('T')[0] || null,
+            responsavel: pessoa,
+            ano: inicio ? inicio.getFullYear() : null
+        };
+        if (pedagogosPrincipais.includes(pessoa)) {
+            atividadesProcessadas.pedagogos.push(itemProcessado);
+        } else {
+            atividadesProcessadas.tecnicos.push(itemProcessado);
+        }
+    });
+    return atividadesProcessadas;
+}
+
+
 // --- FUNÇÕES DE ANÁLISE E FORMATAÇÃO ---
 
 const gerarVisaoGeral = (cursosLimpos) => {
@@ -92,11 +115,10 @@ const gerarVisaoGeral = (cursosLimpos) => {
     const entregasPorTrimestre = dataFiltrada.reduce((acc, c) => { if (c.trimestreDisponivel) { acc[`T${c.trimestreDisponivel}`] = (acc[`T${c.trimestreDisponivel}`] || 0) + 1; } return acc; }, {});
     const cursosPorNivel = dataFiltrada.reduce((acc, c) => { const nivel = c.nivel || "Não definido"; acc[nivel] = (acc[nivel] || 0) + 1; return acc; }, {});
 
-    // ATUALIZADO: Lógica dos próximos 10 lançamentos
     const proximosLancamentos = cursosLimpos
         .filter(c => c.dataDisponivel && c.dataDisponivel >= new Date() && c.etapaAtual !== 'Entregue')
         .sort((a,b) => a.dataDisponivel - b.dataDisponivel)
-        .slice(0, 10) // Pega os 10 próximos
+        .slice(0, 10)
         .map(c => ({
             nome: c.nome,
             nivel: c.nivel,
@@ -118,23 +140,40 @@ const gerarVisaoGeral = (cursosLimpos) => {
     };
 }
 
-const formatarCursosParaLista = (cursosLimpos) => {
+// ATUALIZADO: Função agora associa as formações extras
+const formatarCursosParaLista = (cursosLimpos, formacoesLimpas) => {
     return cursosLimpos.map(curso => {
         const eventosAssociados = [];
+        // 1. Adiciona piloto e formação do próprio checklist
         if (curso.pilotoInicio) {
             eventosAssociados.push({
                 tipo: "Piloto",
                 inicio: curso.pilotoInicio.toISOString().split('T')[0],
-                fim: curso.pilotoFim ? curso.pilotoFim.toISOString().split('T')[0] : curso.pilotoInicio.toISOString().split('T')[0]
+                fim: curso.pilotoFim ? curso.pilotoFim.toISOString().split('T')[0] : curso.pilotoInicio.toISOString().split('T')[0],
+                pedagogo: curso.pedagogo
             });
         }
         if (curso.formacaoInicio) {
             eventosAssociados.push({
                 tipo: "Formação",
                 inicio: curso.formacaoInicio.toISOString().split('T')[0],
-                fim: curso.formacaoFim ? curso.formacaoFim.toISOString().split('T')[0] : curso.formacaoInicio.toISOString().split('T')[0]
+                fim: curso.formacaoFim ? curso.formacaoFim.toISOString().split('T')[0] : curso.formacaoInicio.toISOString().split('T')[0],
+                pedagogo: curso.pedagogo
             });
         }
+
+        // 2. Procura e adiciona formações extras da outra planilha
+        const formacoesExtras = formacoesLimpas.filter(f => f.curso.trim() === curso.nome.trim());
+        formacoesExtras.forEach(f => {
+            if (f.inicio) {
+                eventosAssociados.push({
+                    tipo: "Formação", // Nomenclatura unificada
+                    inicio: f.inicio.toISOString().split('T')[0],
+                    fim: f.fim ? f.fim.toISOString().split('T')[0] : f.inicio.toISOString().split('T')[0],
+                    pedagogo: f.pedagogo // Pedagogo específico daquela formação
+                });
+            }
+        });
 
         return {
             id: curso.id,
@@ -149,14 +188,24 @@ const formatarCursosParaLista = (cursosLimpos) => {
                 pedagogo: curso.pedagogo,
                 tecnico: curso.tecnico
             },
-            eventosAssociados
+            eventosAssociados: eventosAssociados.sort((a,b) => new Date(a.inicio) - new Date(b.inicio)) // Ordena os eventos
         };
     });
 }
 
 function gerarCalendarioEventos(cursos, formacoes, eventos) {
     const calendario = [];
-    const cores = { piloto: '#8b5cf6', formacao: '#16a34a', evento: '#f97316' };
+    const pedagogoCores = {
+        "Josimeri Grein": '#ec4899', // Rosa
+        "Enderson Lopes": '#f97316', // Laranja
+        "Leandro Prado": '#3b82f6',  // Azul
+        "Regiane Hornung": '#8b5cf6',// Roxo
+        "Marcia Salles": '#eab308',  // Amarelo
+        "default": '#6b7280'         // Cinza
+    };
+    const corEvento = '#22c55e'; // Verde
+
+    const getCorPorPedagogo = (nome) => pedagogoCores[nome] || pedagogoCores.default;
 
     cursos.forEach(c => {
         if (c.pilotoInicio) {
@@ -164,7 +213,7 @@ function gerarCalendarioEventos(cursos, formacoes, eventos) {
                 titulo: `Piloto: ${c.nome}`,
                 dataInicio: c.pilotoInicio.toISOString().split('T')[0],
                 dataFim: c.pilotoFim ? c.pilotoFim.toISOString().split('T')[0] : c.pilotoInicio.toISOString().split('T')[0],
-                cor: cores.piloto,
+                cor: getCorPorPedagogo(c.pedagogo),
                 tipo: 'Piloto',
                 propriedades: { cursoId: c.id, nomeCurso: c.nome, nivelCurso: c.nivel, pedagogo: c.pedagogo, tecnico: c.tecnico }
             });
@@ -174,7 +223,7 @@ function gerarCalendarioEventos(cursos, formacoes, eventos) {
                 titulo: `Formação: ${c.nome}`,
                 dataInicio: c.formacaoInicio.toISOString().split('T')[0],
                 dataFim: c.formacaoFim ? c.formacaoFim.toISOString().split('T')[0] : c.formacaoInicio.toISOString().split('T')[0],
-                cor: cores.formacao,
+                cor: getCorPorPedagogo(c.pedagogo),
                 tipo: 'Formação',
                 propriedades: { cursoId: c.id, nomeCurso: c.nome, nivelCurso: c.nivel, pedagogo: c.pedagogo, tecnico: c.tecnico }
             });
@@ -187,7 +236,7 @@ function gerarCalendarioEventos(cursos, formacoes, eventos) {
                 titulo: `Formação: ${f.curso}`,
                 dataInicio: f.inicio.toISOString().split('T')[0],
                 dataFim: f.fim ? f.fim.toISOString().split('T')[0] : f.inicio.toISOString().split('T')[0],
-                cor: cores.formacao,
+                cor: getCorPorPedagogo(f.pedagogo),
                 tipo: 'Formação',
                 propriedades: { nomeCurso: f.curso, nivelCurso: f.nivel, pedagogo: f.pedagogo, tecnico: f.tecnico }
             });
@@ -200,7 +249,7 @@ function gerarCalendarioEventos(cursos, formacoes, eventos) {
                 titulo: `${e.tipo}: ${e.tema}`,
                 dataInicio: e.inicio.toISOString().split('T')[0],
                 dataFim: e.fim ? e.fim.toISOString().split('T')[0] : e.inicio.toISOString().split('T')[0],
-                cor: cores.evento,
+                cor: corEvento,
                 tipo: `Evento ${e.estilo === 'Externa' ? 'Externo' : 'Interno'}`,
                 propriedades: { responsavel: e.tecnico }
             });
@@ -214,45 +263,44 @@ function gerarCalendarioEventos(cursos, formacoes, eventos) {
 // --- HANDLER PRINCIPAL DA API ---
 
 export default async function handler(request, response) {
-  // Captura o ano da URL. Ex: /api/dados?ano=2025
   const anoQuery = request.query.ano;
   const ano = anoQuery ? parseInt(anoQuery) : null;
 
   const googleDriveUrl = "https://drive.google.com/uc?export=download&id=1p-hxGxOqDmsq-Z583mL57vXZShqdn-3u";
+  const pedagogosPrincipais = ["Josimeri Grein", "Leandro Prado", "Enderson Lopes"];
 
   try {
-    // 1. Busca e carrega o arquivo JSON
     const fileResponse = await fetch(googleDriveUrl);
     if (!fileResponse.ok) throw new Error(`Erro ao buscar do Google Drive: ${fileResponse.statusText}`);
     const dadosBrutos = await fileResponse.json();
 
-    // 2. Executa as funções de processamento
     let cursosLimpos = processarChecklist(dadosBrutos.checklist);
     let formacoesLimpas = processarOutrasFormacoes(dadosBrutos.outrasFormacoes);
     let eventosLimpos = processarEventos(dadosBrutos.eventos);
+    let atividadesExtras = processarOutrasAtividades(dadosBrutos.outrasAtividades, pedagogosPrincipais);
 
-    // Bloco de filtro por ano
     if (ano) {
       cursosLimpos = cursosLimpos.filter(c => c.anoDisponivel === ano);
       formacoesLimpas = formacoesLimpas.filter(f => f.inicio && f.inicio.getFullYear() === ano);
       eventosLimpos = eventosLimpos.filter(e => e.inicio && e.inicio.getFullYear() === ano);
+      atividadesExtras.pedagogos = atividadesExtras.pedagogos.filter(a => a.ano === ano);
+      atividadesExtras.tecnicos = atividadesExtras.tecnicos.filter(a => a.ano === ano);
     }
 
-    // 3. Executa as funções de análise com os dados já filtrados
     const visaoGeral = gerarVisaoGeral(cursosLimpos);
-    const listaCursos = formatarCursosParaLista(cursosLimpos);
+    // ATUALIZADO: Passa as formacoesLimpas para a função de formatação
+    const listaCursos = formatarCursosParaLista(cursosLimpos, formacoesLimpas);
     const calendarioEventos = gerarCalendarioEventos(cursosLimpos, formacoesLimpas, eventosLimpos);
 
-    // 4. Monta o objeto final na estrutura desejada
     const dashboardData = {
       anoFiltrado: ano || 'Geral',
       gerado_em: new Date().toISOString(),
       visaoGeral,
       cursos: listaCursos,
       calendarioEventos,
+      atividadesExtras
     };
 
-    // 5. Envia a resposta com sucesso
     response.setHeader('Access-Control-Allow-Origin', '*');
     response.setHeader('Cache-Control', 's-maxage=60, stale-while-revalidate');
     return response.status(200).json(dashboardData);
