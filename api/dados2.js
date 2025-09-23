@@ -21,7 +21,7 @@ function getPersonNameFromFile(filename = "") {
 
 const pedagogueNameMap = {
     "Josimeri": "Josimeri Grein", "Leandro": "Leandro Prado", "Enderson": "Enderson Lopes",
-    "Regiane": "Regiane Hornung", "Marcia": "Marcia Salles"
+    "Regiane": "Regiane Hornung", "Márcia": "Marcia Salles"
 };
 
 const normalizePedagogueName = (name) => pedagogueNameMap[name] || name;
