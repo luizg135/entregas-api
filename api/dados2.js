@@ -1,5 +1,6 @@
 // Arquivo: api/dados.js
-// Este é o código COMPLETO e ATUALIZADO da sua API.
+// CÓDIGO COMPLETO E FINAL
+// Inclui filtro de ano e a lista atualizada de "próximos 10 lançamentos".
 
 // --- FUNÇÕES UTILITÁRIAS ---
 
@@ -33,7 +34,7 @@ function processarChecklist(checklist = []) {
         .map((curso, index) => {
             const dataCampo = excelDateToJSDate(curso["Disponível a campo"]);
             return {
-              id: `CURSO_${index + 1}`, // ID único para cada curso
+              id: `CURSO_${index + 1}`,
               nome: curso.Curso,
               nivel: curso.Nível,
               tipo: curso.Tipo,
@@ -76,10 +77,10 @@ function processarEventos(eventos = []) {
     }));
 }
 
-// --- FUNÇÕES DE ANÁLISE E FORMATAÇÃO (ATUALIZADAS) ---
+// --- FUNÇÕES DE ANÁLISE E FORMATAÇÃO ---
 
 const gerarVisaoGeral = (cursosLimpos) => {
-    const dataFiltrada = cursosLimpos; // Sempre usa o total
+    const dataFiltrada = cursosLimpos;
     const metaEntregas = dataFiltrada.length;
     const novos = dataFiltrada.filter(c => c.tipo === 'Curso novo');
     const atualizacoes = dataFiltrada.filter(c => c.tipo === 'Atualização');
@@ -91,10 +92,11 @@ const gerarVisaoGeral = (cursosLimpos) => {
     const entregasPorTrimestre = dataFiltrada.reduce((acc, c) => { if (c.trimestreDisponivel) { acc[`T${c.trimestreDisponivel}`] = (acc[`T${c.trimestreDisponivel}`] || 0) + 1; } return acc; }, {});
     const cursosPorNivel = dataFiltrada.reduce((acc, c) => { const nivel = c.nivel || "Não definido"; acc[nivel] = (acc[nivel] || 0) + 1; return acc; }, {});
 
+    // ATUALIZADO: Lógica dos próximos 10 lançamentos
     const proximosLancamentos = cursosLimpos
-        .filter(c => c.dataDisponivel && c.dataDisponivel >= new Date())
+        .filter(c => c.dataDisponivel && c.dataDisponivel >= new Date() && c.etapaAtual !== 'Entregue')
         .sort((a,b) => a.dataDisponivel - b.dataDisponivel)
-        .slice(0, 5) // Pega apenas os 5 próximos
+        .slice(0, 10) // Pega os 10 próximos
         .map(c => ({
             nome: c.nome,
             nivel: c.nivel,
@@ -179,7 +181,6 @@ function gerarCalendarioEventos(cursos, formacoes, eventos) {
         }
     });
 
-    // Unificando "outrasFormacoes" como "Formação"
     formacoes.forEach(f => {
         if (f.inicio) {
             calendario.push({
@@ -187,7 +188,7 @@ function gerarCalendarioEventos(cursos, formacoes, eventos) {
                 dataInicio: f.inicio.toISOString().split('T')[0],
                 dataFim: f.fim ? f.fim.toISOString().split('T')[0] : f.inicio.toISOString().split('T')[0],
                 cor: cores.formacao,
-                tipo: 'Formação', // Tipo unificado
+                tipo: 'Formação',
                 propriedades: { nomeCurso: f.curso, nivelCurso: f.nivel, pedagogo: f.pedagogo, tecnico: f.tecnico }
             });
         }
@@ -213,6 +214,10 @@ function gerarCalendarioEventos(cursos, formacoes, eventos) {
 // --- HANDLER PRINCIPAL DA API ---
 
 export default async function handler(request, response) {
+  // Captura o ano da URL. Ex: /api/dados?ano=2025
+  const anoQuery = request.query.ano;
+  const ano = anoQuery ? parseInt(anoQuery) : null;
+
   const googleDriveUrl = "https://drive.google.com/uc?export=download&id=1p-hxGxOqDmsq-Z583mL57vXZShqdn-3u";
 
   try {
@@ -222,17 +227,25 @@ export default async function handler(request, response) {
     const dadosBrutos = await fileResponse.json();
 
     // 2. Executa as funções de processamento
-    const cursosLimpos = processarChecklist(dadosBrutos.checklist);
-    const formacoesLimpas = processarOutrasFormacoes(dadosBrutos.outrasFormacoes);
-    const eventosLimpos = processarEventos(dadosBrutos.eventos);
+    let cursosLimpos = processarChecklist(dadosBrutos.checklist);
+    let formacoesLimpas = processarOutrasFormacoes(dadosBrutos.outrasFormacoes);
+    let eventosLimpos = processarEventos(dadosBrutos.eventos);
 
-    // 3. Executa as funções de análise e formatação para a nova estrutura
+    // Bloco de filtro por ano
+    if (ano) {
+      cursosLimpos = cursosLimpos.filter(c => c.anoDisponivel === ano);
+      formacoesLimpas = formacoesLimpas.filter(f => f.inicio && f.inicio.getFullYear() === ano);
+      eventosLimpos = eventosLimpos.filter(e => e.inicio && e.inicio.getFullYear() === ano);
+    }
+
+    // 3. Executa as funções de análise com os dados já filtrados
     const visaoGeral = gerarVisaoGeral(cursosLimpos);
     const listaCursos = formatarCursosParaLista(cursosLimpos);
     const calendarioEventos = gerarCalendarioEventos(cursosLimpos, formacoesLimpas, eventosLimpos);
 
     // 4. Monta o objeto final na estrutura desejada
     const dashboardData = {
+      anoFiltrado: ano || 'Geral',
       gerado_em: new Date().toISOString(),
       visaoGeral,
       cursos: listaCursos,
