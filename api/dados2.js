@@ -236,6 +236,7 @@ function gerarCalendarioEventos(cursos, formacoes, eventos) {
     return calendario.sort((a,b) => new Date(a.dataInicio) - new Date(b.dataInicio));
 }
 
+// --- FUNÇÃO DE NOTIFICAÇÕES (MODIFICADA) ---
 function gerarNotificacoes(cursos) {
     const notificacoes = [];
     const hoje = new Date();
@@ -243,17 +244,17 @@ function gerarNotificacoes(cursos) {
     const anoAtual = hoje.getFullYear();
     const meses = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"];
 
-    // 1. Notificação de cursos entregues
+    // 1. Notificação de cursos entregues (MENSAGEM ALTERADA)
     cursos.filter(c => c.etapaAtual === 'Entregue' && c.dataEntregue).forEach(curso => {
         notificacoes.push({
             id: `entregue_${curso.id}`,
             tipo: 'entrega',
-            mensagem: `O curso "${curso.nome}" foi entregue!`,
-            data: curso.dataEntregue.toISOString() // Mantemos a data para ordenação
+            mensagem: `O curso "${curso.nome} | ${curso.nivel}" foi entregue!`,
+            data: curso.dataEntregue.toISOString()
         });
     });
 
-    // 2. Notificação de previsão de entregas para o mês (com nome do mês)
+    // 2. Notificação de previsão de entregas para o mês (MENSAGEM ALTERADA)
     const cursosDoMes = cursos.filter(c => {
         if (!c.dataDisponivel || c.etapaAtual === 'Entregue') return false;
         const dataCurso = new Date(c.dataDisponivel);
@@ -261,10 +262,12 @@ function gerarNotificacoes(cursos) {
     });
 
     if (cursosDoMes.length > 0) {
+        // Cria uma string com os nomes e níveis dos cursos
+        const cursosPrevistos = cursosDoMes.map(curso => `"${curso.nome} | ${curso.nivel}"`).join(', ');
         notificacoes.push({
             id: `previsao_${anoAtual}-${mesAtual + 1}`,
             tipo: 'previsao',
-            mensagem: `Há ${cursosDoMes.length} cursos previstos para entrega no mês de ${meses[mesAtual]}.`,
+            mensagem: `Cursos previstos para ${meses[mesAtual]}: ${cursosPrevistos}.`,
             data: hoje.toISOString()
         });
     }
