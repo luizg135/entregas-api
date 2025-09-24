@@ -244,7 +244,7 @@ function gerarNotificacoes(cursos) {
     const meses = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"];
 
     // 1. Notificação de cursos entregues
-    cursos.filter(c => c.etapaAtual === 'Entregue').forEach(curso => {
+    cursos.filter(c => c.etapaAtual === 'Entregue' && c.dataEntregue).forEach(curso => {
         notificacoes.push({
             id: `entregue_${curso.id}`,
             tipo: 'entrega',
