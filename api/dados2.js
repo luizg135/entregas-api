@@ -239,18 +239,37 @@ function gerarCalendarioEventos(cursos, formacoes, eventos) {
 function gerarNotificacoes(cursos) {
     const notificacoes = [];
     const hoje = new Date();
-    const mesAtual = hoje.getMonth(), anoAtual = hoje.getFullYear();
+    const mesAtual = hoje.getMonth();
+    const anoAtual = hoje.getFullYear();
     const meses = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"];
 
+    // 1. Notificação de cursos entregues
     cursos.filter(c => c.etapaAtual === 'Entregue').forEach(curso => {
-        notificacoes.push({ id: `entregue_${curso.id}`, tipo: 'entrega', mensagem: `O curso "${curso.nome}" foi entregue!`, data: curso.dataEntregue.toISOString() });
+        notificacoes.push({
+            id: `entregue_${curso.id}`,
+            tipo: 'entrega',
+            mensagem: `O curso "${curso.nome}" foi entregue!`,
+            data: curso.dataEntregue.toISOString() // Mantemos a data para ordenação
+        });
     });
-    
-    const cursosDoMes = cursos.filter(c => c.dataDisponivel && !c.dataEntregue && c.dataDisponivel.getMonth() === mesAtual && c.dataDisponivel.getFullYear() === anoAtual);
+
+    // 2. Notificação de previsão de entregas para o mês (com nome do mês)
+    const cursosDoMes = cursos.filter(c => {
+        if (!c.dataDisponivel || c.etapaAtual === 'Entregue') return false;
+        const dataCurso = new Date(c.dataDisponivel);
+        return dataCurso.getMonth() === mesAtual && dataCurso.getFullYear() === anoAtual;
+    });
+
     if (cursosDoMes.length > 0) {
-        notificacoes.push({ id: `previsao_${anoAtual}-${mesAtual + 1}`, tipo: 'previsao', mensagem: `Há ${cursosDoMes.length} cursos previstos para entrega no mês de ${meses[mesAtual]}.`, data: hoje.toISOString() });
+        notificacoes.push({
+            id: `previsao_${anoAtual}-${mesAtual + 1}`,
+            tipo: 'previsao',
+            mensagem: `Há ${cursosDoMes.length} cursos previstos para entrega no mês de ${meses[mesAtual]}.`,
+            data: hoje.toISOString()
+        });
     }
-    
+
+    // Ordena as notificações pela data, mais recentes primeiro
     return notificacoes.sort((a, b) => new Date(b.data) - new Date(a.data));
 }
 
