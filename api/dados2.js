@@ -1,6 +1,6 @@
 // Arquivo: api/dados2.js
 // CÓDIGO COMPLETO E FINAL
-// Lógica atualizada para associar "Outras Formações" e gerar notificações.
+// Lógica de notificação de previsão corrigida.
 
 // --- FUNÇÕES UTILITÁRIAS ---
 
@@ -236,7 +236,6 @@ function gerarCalendarioEventos(cursos, formacoes, eventos) {
     return calendario.sort((a,b) => new Date(a.dataInicio) - new Date(b.dataInicio));
 }
 
-// --- FUNÇÃO DE NOTIFICAÇÕES (MODIFICADA) ---
 function gerarNotificacoes(cursos) {
     const notificacoes = [];
     const hoje = new Date();
@@ -244,7 +243,7 @@ function gerarNotificacoes(cursos) {
     const anoAtual = hoje.getFullYear();
     const meses = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"];
 
-    // 1. Notificação de cursos entregues (MENSAGEM ALTERADA)
+    // 1. Notificação de cursos entregues
     cursos.filter(c => c.etapaAtual === 'Entregue' && c.dataEntregue).forEach(curso => {
         notificacoes.push({
             id: `entregue_${curso.id}`,
@@ -254,7 +253,7 @@ function gerarNotificacoes(cursos) {
         });
     });
 
-    // 2. Notificação de previsão de entregas para o mês (MENSAGEM ALTERADA)
+    // 2. Notificação de previsão de entregas para o mês (LÓGICA CORRIGIDA)
     const cursosDoMes = cursos.filter(c => {
         if (!c.dataDisponivel || c.etapaAtual === 'Entregue') return false;
         const dataCurso = new Date(c.dataDisponivel);
@@ -262,12 +261,10 @@ function gerarNotificacoes(cursos) {
     });
 
     if (cursosDoMes.length > 0) {
-        // Cria uma string com os nomes e níveis dos cursos
-        const cursosPrevistos = cursosDoMes.map(curso => `"${curso.nome} | ${curso.nivel}"`).join(', ');
         notificacoes.push({
             id: `previsao_${anoAtual}-${mesAtual + 1}`,
             tipo: 'previsao',
-            mensagem: `Cursos previstos para ${meses[mesAtual]}: ${cursosPrevistos}.`,
+            mensagem: `Há ${cursosDoMes.length} cursos previstos para entrega no mês de ${meses[mesAtual]}.`,
             data: hoje.toISOString()
         });
     }
