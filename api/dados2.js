@@ -264,7 +264,7 @@ function gerarNotificacoes(cursos) {
         notificacoes.push({
             id: `previsao_${anoAtual}-${mesAtual + 1}`,
             tipo: 'previsao',
-            mensagem: `Há ${cursosDoMes.length} cursos previstos para entrega no mês de ${meses[mesAtual]}.`,
+            mensagem: `Há ${cursosDoMes.length} cursos previstos para serem entregues no mês de ${meses[mesAtual]}.`,
             data: hoje.toISOString()
         });
     }
