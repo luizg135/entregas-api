@@ -1,6 +1,6 @@
-// Arquivo: api/dados.js
+// Arquivo: api/dados2.js
 // CÓDIGO COMPLETO E FINAL
-// Lógica atualizada para associar "Outras Formações" diretamente aos cursos existentes.
+// Lógica atualizada para associar "Outras Formações" e gerar notificações.
 
 // --- FUNÇÕES UTILITÁRIAS ---
 
@@ -33,6 +33,8 @@ function processarChecklist(checklist = []) {
         .filter(curso => curso.Curso && curso.Curso.trim() !== "")
         .map((curso, index) => {
             const dataCampo = excelDateToJSDate(curso["Disponível a campo"]);
+            const dataEntregue = curso["Etapa Atual"] === "Entregue" ? new Date() : null;
+
             return {
               id: `CURSO_${index + 1}`,
               nome: curso.Curso,
@@ -50,6 +52,7 @@ function processarChecklist(checklist = []) {
               pilotoFim: excelDateToJSDate(curso["Curso Piloto (Final)"]),
               formacaoInicio: excelDateToJSDate(curso["Formação (Início)"]),
               formacaoFim: excelDateToJSDate(curso["Formação (Final)"]),
+              dataEntregue: dataEntregue
             };
         });
 }
@@ -140,11 +143,9 @@ const gerarVisaoGeral = (cursosLimpos) => {
     };
 }
 
-// ATUALIZADO: Função agora associa as formações extras
 const formatarCursosParaLista = (cursosLimpos, formacoesLimpas) => {
     return cursosLimpos.map(curso => {
         const eventosAssociados = [];
-        // 1. Adiciona piloto e formação do próprio checklist
         if (curso.pilotoInicio) {
             eventosAssociados.push({
                 tipo: "Piloto",
@@ -162,15 +163,14 @@ const formatarCursosParaLista = (cursosLimpos, formacoesLimpas) => {
             });
         }
 
-        // 2. Procura e adiciona formações extras da outra planilha
         const formacoesExtras = formacoesLimpas.filter(f => f.curso.trim() === curso.nome.trim());
         formacoesExtras.forEach(f => {
             if (f.inicio) {
                 eventosAssociados.push({
-                    tipo: "Formação", // Nomenclatura unificada
+                    tipo: "Formação",
                     inicio: f.inicio.toISOString().split('T')[0],
                     fim: f.fim ? f.fim.toISOString().split('T')[0] : f.inicio.toISOString().split('T')[0],
-                    pedagogo: f.pedagogo // Pedagogo específico daquela formação
+                    pedagogo: f.pedagogo
                 });
             }
         });
@@ -188,7 +188,8 @@ const formatarCursosParaLista = (cursosLimpos, formacoesLimpas) => {
                 pedagogo: curso.pedagogo,
                 tecnico: curso.tecnico
             },
-            eventosAssociados: eventosAssociados.sort((a,b) => new Date(a.inicio) - new Date(b.inicio)) // Ordena os eventos
+            eventosAssociados: eventosAssociados.sort((a,b) => new Date(a.inicio) - new Date(b.inicio)),
+            dataEntregue: curso.dataEntregue ? curso.dataEntregue.toISOString().split('T')[0] : null
         };
     });
 }
@@ -196,67 +197,79 @@ const formatarCursosParaLista = (cursosLimpos, formacoesLimpas) => {
 function gerarCalendarioEventos(cursos, formacoes, eventos) {
     const calendario = [];
     const pedagogoCores = {
-        "Josimeri Grein": '#ec4899', // Rosa
-        "Enderson Lopes": '#f97316', // Laranja
-        "Leandro Prado": '#3b82f6',  // Azul
-        "Regiane Hornung": '#8b5cf6',// Roxo
-        "Marcia Salles": '#eab308',  // Amarelo
-        "default": '#6b7280'         // Cinza
+        "Josimeri Grein": '#ec4899', "Enderson Lopes": '#f97316', "Leandro Prado": '#3b82f6',
+        "Regiane Hornung": '#8b5cf6', "Marcia Salles": '#eab308', "default": '#6b7280'
     };
-    const corEvento = '#22c55e'; // Verde
-
+    const corEvento = '#22c55e';
     const getCorPorPedagogo = (nome) => pedagogoCores[nome] || pedagogoCores.default;
 
     cursos.forEach(c => {
-        if (c.pilotoInicio) {
-            calendario.push({
-                titulo: `Piloto: ${c.nome}`,
-                dataInicio: c.pilotoInicio.toISOString().split('T')[0],
-                dataFim: c.pilotoFim ? c.pilotoFim.toISOString().split('T')[0] : c.pilotoInicio.toISOString().split('T')[0],
-                cor: getCorPorPedagogo(c.pedagogo),
-                tipo: 'Piloto',
-                propriedades: { cursoId: c.id, nomeCurso: c.nome, nivelCurso: c.nivel, pedagogo: c.pedagogo, tecnico: c.tecnico }
-            });
-        }
-        if (c.formacaoInicio) {
-             calendario.push({
-                titulo: `Formação: ${c.nome}`,
-                dataInicio: c.formacaoInicio.toISOString().split('T')[0],
-                dataFim: c.formacaoFim ? c.formacaoFim.toISOString().split('T')[0] : c.formacaoInicio.toISOString().split('T')[0],
-                cor: getCorPorPedagogo(c.pedagogo),
-                tipo: 'Formação',
-                propriedades: { cursoId: c.id, nomeCurso: c.nome, nivelCurso: c.nivel, pedagogo: c.pedagogo, tecnico: c.tecnico }
-            });
-        }
+        if (c.pilotoInicio) calendario.push({
+            titulo: `Piloto: ${c.nome}`, dataInicio: c.pilotoInicio.toISOString().split('T')[0],
+            dataFim: c.pilotoFim ? c.pilotoFim.toISOString().split('T')[0] : c.pilotoInicio.toISOString().split('T')[0],
+            cor: getCorPorPedagogo(c.pedagogo), tipo: 'Piloto',
+            propriedades: { cursoId: c.id, nomeCurso: c.nome, nivelCurso: c.nivel, pedagogo: c.pedagogo, tecnico: c.tecnico }
+        });
+        if (c.formacaoInicio) calendario.push({
+            titulo: `Formação: ${c.nome}`, dataInicio: c.formacaoInicio.toISOString().split('T')[0],
+            dataFim: c.formacaoFim ? c.formacaoFim.toISOString().split('T')[0] : c.formacaoInicio.toISOString().split('T')[0],
+            cor: getCorPorPedagogo(c.pedagogo), tipo: 'Formação',
+            propriedades: { cursoId: c.id, nomeCurso: c.nome, nivelCurso: c.nivel, pedagogo: c.pedagogo, tecnico: c.tecnico }
+        });
     });
-
     formacoes.forEach(f => {
-        if (f.inicio) {
-            calendario.push({
-                titulo: `Formação: ${f.curso}`,
-                dataInicio: f.inicio.toISOString().split('T')[0],
-                dataFim: f.fim ? f.fim.toISOString().split('T')[0] : f.inicio.toISOString().split('T')[0],
-                cor: getCorPorPedagogo(f.pedagogo),
-                tipo: 'Formação',
-                propriedades: { nomeCurso: f.curso, nivelCurso: f.nivel, pedagogo: f.pedagogo, tecnico: f.tecnico }
-            });
-        }
+        if (f.inicio) calendario.push({
+            titulo: `Formação: ${f.curso}`, dataInicio: f.inicio.toISOString().split('T')[0],
+            dataFim: f.fim ? f.fim.toISOString().split('T')[0] : f.inicio.toISOString().split('T')[0],
+            cor: getCorPorPedagogo(f.pedagogo), tipo: 'Formação',
+            propriedades: { nomeCurso: f.curso, nivelCurso: f.nivel, pedagogo: f.pedagogo, tecnico: f.tecnico }
+        });
     });
-
     eventos.forEach(e => {
-        if (e.inicio) {
-            calendario.push({
-                titulo: `${e.tipo}: ${e.tema}`,
-                dataInicio: e.inicio.toISOString().split('T')[0],
-                dataFim: e.fim ? e.fim.toISOString().split('T')[0] : e.inicio.toISOString().split('T')[0],
-                cor: corEvento,
-                tipo: `Evento ${e.estilo === 'Externa' ? 'Externo' : 'Interno'}`,
-                propriedades: { responsavel: e.tecnico }
-            });
-        }
+        if (e.inicio) calendario.push({
+            titulo: `${e.tipo}: ${e.tema}`, dataInicio: e.inicio.toISOString().split('T')[0],
+            dataFim: e.fim ? e.fim.toISOString().split('T')[0] : e.inicio.toISOString().split('T')[0],
+            cor: corEvento, tipo: `Evento ${e.estilo === 'Externa' ? 'Externo' : 'Interno'}`,
+            propriedades: { responsavel: e.tecnico }
+        });
+    });
+    return calendario.sort((a,b) => new Date(a.dataInicio) - new Date(b.dataInicio));
+}
+
+function gerarNotificacoes(cursos) {
+    const notificacoes = [];
+    const hoje = new Date();
+    const mesAtual = hoje.getMonth();
+    const anoAtual = hoje.getFullYear();
+
+    const cursosEntregues = cursos.filter(c => c.etapaAtual === 'Entregue');
+    cursosEntregues.forEach(curso => {
+        notificacoes.push({
+            id: `entregue_${curso.id}`,
+            tipo: 'entrega',
+            mensagem: `O curso "${curso.nome}" foi entregue!`,
+            data: curso.dataEntregue.toISOString(),
+            lida: false
+        });
     });
 
-    return calendario.sort((a,b) => new Date(a.dataInicio) - new Date(b.dataInicio));
+    const cursosParaEntregarEsteMes = cursos.filter(c => {
+        if (!c.dataDisponivel || c.etapaAtual === 'Entregue') return false;
+        const dataCurso = new Date(c.dataDisponivel);
+        return dataCurso.getMonth() === mesAtual && dataCurso.getFullYear() === anoAtual;
+    });
+
+    if (cursosParaEntregarEsteMes.length > 0) {
+        notificacoes.push({
+            id: `previsao_${anoAtual}-${mesAtual + 1}`,
+            tipo: 'previsao',
+            mensagem: `Há ${cursosParaEntregarEsteMes.length} cursos previstos para serem entregues este mês.`,
+            data: hoje.toISOString(),
+            lida: false
+        });
+    }
+
+    return notificacoes.sort((a, b) => new Date(b.data) - new Date(a.data));
 }
 
 
@@ -278,6 +291,8 @@ export default async function handler(request, response) {
     let formacoesLimpas = processarOutrasFormacoes(dadosBrutos.outrasFormacoes);
     let eventosLimpos = processarEventos(dadosBrutos.eventos);
     let atividadesExtras = processarOutrasAtividades(dadosBrutos.outrasAtividades, pedagogosPrincipais);
+    
+    const notificacoes = gerarNotificacoes(cursosLimpos);
 
     if (ano) {
       cursosLimpos = cursosLimpos.filter(c => c.anoDisponivel === ano);
@@ -288,7 +303,6 @@ export default async function handler(request, response) {
     }
 
     const visaoGeral = gerarVisaoGeral(cursosLimpos);
-    // ATUALIZADO: Passa as formacoesLimpas para a função de formatação
     const listaCursos = formatarCursosParaLista(cursosLimpos, formacoesLimpas);
     const calendarioEventos = gerarCalendarioEventos(cursosLimpos, formacoesLimpas, eventosLimpos);
 
@@ -298,7 +312,8 @@ export default async function handler(request, response) {
       visaoGeral,
       cursos: listaCursos,
       calendarioEventos,
-      atividadesExtras
+      atividadesExtras,
+      notificacoes
     };
 
     response.setHeader('Access-Control-Allow-Origin', '*');
